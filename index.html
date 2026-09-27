@@ -195,7 +195,7 @@
           // GitHub Pages location:
           // /kirana-scanner/public/a.out.js
           // /kirana-scanner/public/a.out.wasm
-          wasmPath: new URL("./public/", import.meta.url).href,
+          wasmPath: "https://anamol-sir.github.io/kirana-scanner/public/",
 
           scanInterval: 150,
 
@@ -230,6 +230,7 @@
         console.error(error);
         scanner = null;
         setStatus("Scanner error: " + (error.message || error), "error");
+        alert("Scanner error:\n" + (error.message || error));
       }
     }
 
