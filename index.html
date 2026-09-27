@@ -2,23 +2,12 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
-  >
-
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <meta name="apple-mobile-web-app-capable" content="yes">
-
   <title>Kirana Scanner</title>
 
-  <!-- ZBar WebAssembly barcode engine -->
-  <script src="https://cdn.jsdelivr.net/npm/@undecaf/zbar-wasm@0.11.0/dist/index.js"></script>
-
   <style>
-    * {
-      box-sizing: border-box;
-    }
+    * { box-sizing: border-box; }
 
     body {
       margin: 0;
@@ -29,14 +18,8 @@
       text-align: center;
     }
 
-    header {
-      padding: 18px 15px 10px;
-    }
-
-    h1 {
-      margin: 0;
-      font-size: 25px;
-    }
+    header { padding: 18px 15px 10px; }
+    h1 { margin: 0; font-size: 25px; }
 
     #status {
       margin-top: 8px;
@@ -48,47 +31,11 @@
       position: relative;
       width: 100%;
       max-width: 600px;
+      height: 430px;
       margin: 15px auto 0;
       background: #000;
       overflow: hidden;
-    }
-
-    #video {
-      display: block;
-      width: 100%;
-      height: auto;
-      min-height: 300px;
-      object-fit: cover;
-      background: #000;
-    }
-
-    /*
-      Barcode aiming box
-    */
-    #scan-box {
-      position: absolute;
-      left: 8%;
-      right: 8%;
-      top: 35%;
-      height: 30%;
-
-      border: 3px solid #00ff66;
       border-radius: 12px;
-
-      box-shadow:
-        0 0 0 9999px rgba(0,0,0,0.25);
-
-      pointer-events: none;
-    }
-
-    #scan-line {
-      position: absolute;
-      left: 0;
-      right: 0;
-      top: 50%;
-      height: 2px;
-      background: #00ff66;
-      box-shadow: 0 0 8px #00ff66;
     }
 
     #result {
@@ -108,9 +55,7 @@
       margin-bottom: 6px;
     }
 
-    #buttons {
-      padding: 10px 15px 30px;
-    }
+    #buttons { padding: 10px 15px 30px; }
 
     button {
       width: 100%;
@@ -125,13 +70,8 @@
       background: #333;
     }
 
-    #startBtn {
-      background: #1976d2;
-    }
-
-    #stopBtn {
-      background: #555;
-    }
+    #startBtn { background: #1976d2; }
+    #stopBtn { background: #555; }
 
     #lastScans {
       max-width: 600px;
@@ -153,41 +93,24 @@
       font-size: 16px;
     }
 
-    .success {
-      color: #00ff66;
-    }
+    .success { color: #00ff66 !important; }
+    .error { color: #ff6666 !important; }
 
-    .error {
-      color: #ff6666;
-    }
-
-    canvas {
-      display: none;
+    /* Make the library's scanner fill our box */
+    #scanner-container > * {
+      width: 100% !important;
+      height: 100% !important;
     }
   </style>
 </head>
 
 <body>
-
   <header>
     <h1>📦 Kirana Scanner</h1>
-    <div id="status">Preparing scanner...</div>
+    <div id="status">Tap START SCANNER</div>
   </header>
 
-  <div id="scanner-container">
-
-    <video
-      id="video"
-      autoplay
-      playsinline
-      muted
-    ></video>
-
-    <div id="scan-box">
-      <div id="scan-line"></div>
-    </div>
-
-  </div>
+  <div id="scanner-container"></div>
 
   <div id="result">
     <div id="result-label">LAST BARCODE</div>
@@ -195,519 +118,139 @@
   </div>
 
   <div id="buttons">
-
-    <button id="startBtn" onclick="startScanner()">
-      📷 START SCANNER
-    </button>
-
-    <button id="stopBtn" onclick="stopScanner()">
-      ⏹ STOP SCANNER
-    </button>
-
+    <button id="startBtn">📷 START SCANNER</button>
+    <button id="stopBtn">⏹ STOP SCANNER</button>
   </div>
 
   <div id="lastScans">
-
     <h2>Recent scans</h2>
-
     <div id="scanList"></div>
-
   </div>
 
-  <canvas id="canvas"></canvas>
-
-
-<script>
-
-/* =========================================================
-   KIRANA BARCODE SCANNER
-   Camera → Canvas → ZBar WASM
-   ========================================================= */
-
-const video = document.getElementById("video");
-const canvas = document.getElementById("canvas");
-const ctx = canvas.getContext("2d", {
-  willReadFrequently: true
-});
-
-const statusEl = document.getElementById("status");
-const barcodeValue = document.getElementById("barcodeValue");
-const scanList = document.getElementById("scanList");
-
-let stream = null;
-let scanning = false;
-let processing = false;
-
-let lastBarcode = "";
-let lastScanTime = 0;
-
-const DUPLICATE_DELAY = 1500;
-
-
-/* =========================================================
-   STATUS
-   ========================================================= */
-
-function setStatus(message, type = "") {
-
-  statusEl.textContent = message;
-
-  statusEl.className = type;
-
-}
-
-
-/* =========================================================
-   START CAMERA
-   ========================================================= */
-
-async function startScanner() {
-
-  if (scanning) {
-    return;
-  }
-
-  try {
-
-    setStatus("Requesting camera permission...");
-
-    /*
-      Rear iPhone camera.
-    */
-
-    stream = await navigator.mediaDevices.getUserMedia({
-
-      video: {
-        facingMode: {
-          ideal: "environment"
-        },
-
-        width: {
-          ideal: 1280
-        },
-
-        height: {
-          ideal: 720
-        },
-
-        frameRate: {
-          ideal: 30,
-          max: 30
-        }
-      },
-
-      audio: false
-
-    });
-
-    video.srcObject = stream;
-
-    await video.play();
-
-    scanning = true;
-
-    setStatus(
-      "Camera ready — point at a product barcode",
-      "success"
-    );
-
-    requestAnimationFrame(scanFrame);
-
-  } catch (error) {
-
-    console.error(error);
-
-    setStatus(
-      "Camera error: " + error.message,
-      "error"
-    );
-
-  }
-
-}
-
-
-/* =========================================================
-   STOP CAMERA
-   ========================================================= */
-
-function stopScanner() {
-
-  scanning = false;
-
-  if (stream) {
-
-    stream.getTracks().forEach(track => {
-      track.stop();
-    });
-
-    stream = null;
-
-  }
-
-  video.srcObject = null;
-
-  setStatus("Scanner stopped");
-
-}
-
-
-/* =========================================================
-   SCAN CAMERA FRAME
-   ========================================================= */
-
-async function scanFrame() {
-
-  if (!scanning) {
-    return;
-  }
-
-  /*
-    Do not process another frame while ZBar is busy.
-  */
-
-  if (!processing && video.readyState >= 2) {
-
-    processing = true;
-
-    try {
-
-      const videoWidth = video.videoWidth;
-      const videoHeight = video.videoHeight;
-
-      if (videoWidth && videoHeight) {
-
-        /*
-          Scan mainly the center region.
-
-          This reduces the amount of image ZBar
-          has to process and makes continuous scanning
-          faster on iPhone.
-        */
-
-        const cropWidth = Math.floor(videoWidth * 0.85);
-        const cropHeight = Math.floor(videoHeight * 0.40);
-
-        const cropX =
-          Math.floor((videoWidth - cropWidth) / 2);
-
-        const cropY =
-          Math.floor((videoHeight - cropHeight) / 2);
-
-        /*
-          Resize the scan image.
-
-          900px is more than enough for most
-          retail barcodes while keeping processing fast.
-        */
-
-        const scale =
-          Math.min(1, 900 / cropWidth);
-
-        const outputWidth =
-          Math.floor(cropWidth * scale);
-
-        const outputHeight =
-          Math.floor(cropHeight * scale);
-
-        canvas.width = outputWidth;
-        canvas.height = outputHeight;
-
-        ctx.drawImage(
-          video,
-
-          cropX,
-          cropY,
-          cropWidth,
-          cropHeight,
-
-          0,
-          0,
-          outputWidth,
-          outputHeight
-        );
-
-        const imageData =
-          ctx.getImageData(
-            0,
-            0,
-            outputWidth,
-            outputHeight
-          );
-
-        /*
-          Send image to ZBar WASM.
-        */
-
-        const symbols =
-          await zbarWasm.scanImageData(imageData);
-
-        if (symbols && symbols.length > 0) {
-
-          for (const symbol of symbols) {
-
-            let decoded = "";
-
-            try {
-              decoded = symbol.decode();
-            } catch (e) {
-              continue;
+  <script type="module">
+    import { BarcodeScanner } from "https://esm.sh/web-wasm-barcode-reader@1.6.1";
+
+    const container = document.getElementById("scanner-container");
+    const statusEl = document.getElementById("status");
+    const barcodeValue = document.getElementById("barcodeValue");
+    const scanList = document.getElementById("scanList");
+    const startBtn = document.getElementById("startBtn");
+    const stopBtn = document.getElementById("stopBtn");
+
+    let scanner = null;
+    let lastBarcode = "";
+    let lastScanTime = 0;
+    const DUPLICATE_DELAY = 1500;
+
+    function setStatus(message, type = "") {
+      statusEl.textContent = message;
+      statusEl.className = type;
+    }
+
+    function addRecentScan(barcode, type) {
+      const item = document.createElement("div");
+      item.className = "scan-item";
+      item.innerHTML =
+        "<strong>" + barcode + "</strong><br>" +
+        "<small>" + (type || "Barcode") + " • " +
+        new Date().toLocaleTimeString() + "</small>";
+
+      scanList.prepend(item);
+
+      while (scanList.children.length > 10) {
+        scanList.removeChild(scanList.lastChild);
+      }
+    }
+
+    function beep() {
+      try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+
+        const audioContext = new AudioContext();
+        const oscillator = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+
+        oscillator.frequency.value = 1200;
+        oscillator.type = "sine";
+        gain.gain.value = 0.08;
+
+        oscillator.connect(gain);
+        gain.connect(audioContext.destination);
+
+        oscillator.start();
+        oscillator.stop(audioContext.currentTime + 0.08);
+      } catch (e) {}
+    }
+
+    async function startScanner() {
+      if (scanner) return;
+
+      try {
+        setStatus("Starting iPhone barcode scanner...");
+
+        scanner = new BarcodeScanner({
+          container: container,
+
+          // GitHub Pages location:
+          // /kirana-scanner/public/a.out.js
+          // /kirana-scanner/public/a.out.wasm
+          wasmPath: new URL("./public/", import.meta.url).href,
+
+          scanInterval: 150,
+
+          onDetect: (result) => {
+            const barcode = result.data;
+            const type = result.symbol || "Barcode";
+            const now = Date.now();
+
+            if (!barcode) return;
+
+            if (
+              barcode === lastBarcode &&
+              now - lastScanTime < DUPLICATE_DELAY
+            ) {
+              return;
             }
 
-            if (!decoded) {
-              continue;
-            }
+            lastBarcode = barcode;
+            lastScanTime = now;
 
-            handleBarcode(
-              decoded,
-              symbol.typeName
-            );
-
-            /*
-              We only need the first valid barcode
-              from this frame.
-            */
-
-            break;
+            barcodeValue.textContent = barcode;
+            setStatus("✅ " + type + " detected", "success");
+            addRecentScan(barcode, type);
+            beep();
           }
+        });
 
-        }
+        await scanner.start();
+        setStatus("Camera ready — point at a product barcode", "success");
 
+      } catch (error) {
+        console.error(error);
+        scanner = null;
+        setStatus("Scanner error: " + (error.message || error), "error");
+      }
+    }
+
+    function stopScanner() {
+      if (scanner) {
+        scanner.stop();
+        scanner = null;
       }
 
-    } catch (error) {
-
-      console.error(
-        "Barcode processing error:",
-        error
-      );
-
+      container.innerHTML = "";
+      setStatus("Scanner stopped");
     }
 
-    processing = false;
+    startBtn.addEventListener("click", startScanner);
+    stopBtn.addEventListener("click", stopScanner);
 
-  }
+    window.addEventListener("pagehide", stopScanner);
 
-  /*
-    Keep scanning continuously.
-  */
-
-  requestAnimationFrame(scanFrame);
-
-}
-
-
-/* =========================================================
-   BARCODE DETECTED
-   ========================================================= */
-
-function handleBarcode(
-  barcode,
-  barcodeType
-) {
-
-  const now = Date.now();
-
-  /*
-    Prevent the same barcode from being detected
-    20 times while it is still in front of camera.
-  */
-
-  if (
-    barcode === lastBarcode &&
-    now - lastScanTime < DUPLICATE_DELAY
-  ) {
-
-    return;
-
-  }
-
-  lastBarcode = barcode;
-  lastScanTime = now;
-
-  /*
-    Display result.
-  */
-
-  barcodeValue.textContent = barcode;
-
-  setStatus(
-    "✅ " + barcodeType + " detected",
-    "success"
-  );
-
-  /*
-    Add to recent scans.
-  */
-
-  addRecentScan(
-    barcode,
-    barcodeType
-  );
-
-  /*
-    iPhone vibration where supported.
-  */
-
-  if (navigator.vibrate) {
-
-    try {
-      navigator.vibrate(80);
-    } catch (e) {}
-
-  }
-
-  /*
-    Beep.
-  */
-
-  beep();
-
-}
-
-
-/* =========================================================
-   RECENT SCANS
-   ========================================================= */
-
-function addRecentScan(
-  barcode,
-  type
-) {
-
-  const item =
-    document.createElement("div");
-
-  item.className = "scan-item";
-
-  item.innerHTML =
-    "<strong>" +
-    barcode +
-    "</strong><br>" +
-    "<small>" +
-    type +
-    " • " +
-    new Date().toLocaleTimeString() +
-    "</small>";
-
-  scanList.prepend(item);
-
-  /*
-    Keep only last 10 scans on screen.
-  */
-
-  while (
-    scanList.children.length > 10
-  ) {
-
-    scanList.removeChild(
-      scanList.lastChild
-    );
-
-  }
-
-}
-
-
-/* =========================================================
-   BEEP
-   ========================================================= */
-
-function beep() {
-
-  try {
-
-    const AudioContext =
-      window.AudioContext ||
-      window.webkitAudioContext;
-
-    if (!AudioContext) {
-      return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setStatus("This browser cannot access the camera.", "error");
     }
-
-    const audioContext =
-      new AudioContext();
-
-    const oscillator =
-      audioContext.createOscillator();
-
-    const gain =
-      audioContext.createGain();
-
-    oscillator.frequency.value = 1200;
-
-    oscillator.type = "sine";
-
-    gain.gain.value = 0.08;
-
-    oscillator.connect(gain);
-
-    gain.connect(
-      audioContext.destination
-    );
-
-    oscillator.start();
-
-    oscillator.stop(
-      audioContext.currentTime + 0.08
-    );
-
-  } catch (e) {}
-
-}
-
-
-/* =========================================================
-   PAGE VISIBILITY
-   ========================================================= */
-
-document.addEventListener(
-  "visibilitychange",
-  function() {
-
-    if (
-      document.hidden &&
-      scanning
-    ) {
-
-      stopScanner();
-
-    }
-
-  }
-);
-
-
-/* =========================================================
-   INITIAL STATUS
-   ========================================================= */
-
-window.addEventListener(
-  "load",
-  function() {
-
-    if (
-      !navigator.mediaDevices ||
-      !navigator.mediaDevices.getUserMedia
-    ) {
-
-      setStatus(
-        "This browser cannot access the camera.",
-        "error"
-      );
-
-      return;
-
-    }
-
-    setStatus(
-      "Tap START SCANNER"
-    );
-
-  }
-);
-
-</script>
-
+  </script>
 </body>
 </html>
